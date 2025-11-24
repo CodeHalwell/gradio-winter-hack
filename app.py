@@ -13,7 +13,6 @@ from playwright.sync_api import sync_playwright
 import google.generativeai as genai
 from dotenv import load_dotenv
 import tempfile
-import base64
 from PIL import Image
 import io
 
@@ -105,6 +104,7 @@ def create_preview_html(html_code, css_code, js_code):
 
 def generate_preview(html_code, css_code, js_code):
     """Generate a screenshot preview of the combined HTML, CSS, and JS code."""
+    temp_html_path = None
     try:
         # Create combined HTML
         full_html = create_preview_html(html_code, css_code, js_code)
@@ -125,9 +125,6 @@ def generate_preview(html_code, css_code, js_code):
             screenshot_bytes = page.screenshot()
             browser.close()
         
-        # Clean up temp file
-        os.unlink(temp_html_path)
-        
         # Convert bytes to PIL Image
         image = Image.open(io.BytesIO(screenshot_bytes))
         
@@ -135,6 +132,14 @@ def generate_preview(html_code, css_code, js_code):
     
     except Exception as e:
         return None, f"Error generating preview: {str(e)}"
+    
+    finally:
+        # Always clean up temp file
+        if temp_html_path and os.path.exists(temp_html_path):
+            try:
+                os.unlink(temp_html_path)
+            except Exception:
+                pass  # Ignore cleanup errors
 
 
 def analyze_image_with_gemini(image, text_prompt):
@@ -179,11 +184,20 @@ def process_audio_input(audio_file):
         with open(audio_file, 'rb') as f:
             audio_data = f.read()
         
+        # Determine MIME type based on file extension
+        mime_type = "audio/wav"
+        if audio_file.lower().endswith('.mp3'):
+            mime_type = "audio/mp3"
+        elif audio_file.lower().endswith('.ogg'):
+            mime_type = "audio/ogg"
+        elif audio_file.lower().endswith('.webm'):
+            mime_type = "audio/webm"
+        
         # Use Gemini to transcribe and understand audio
         prompt = "Transcribe this audio and if it contains code-related requests, provide HTML/CSS/JavaScript code suggestions."
         response = vision_model.generate_content([
             prompt,
-            {"mime_type": "audio/wav", "data": audio_data}
+            {"mime_type": mime_type, "data": audio_data}
         ])
         
         return response.text
